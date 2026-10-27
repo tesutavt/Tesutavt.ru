@@ -1,0 +1,16 @@
+# Caddy сам получает и продлевает Let's Encrypt сертификат - для VDS это
+# самый простой вариант reverse proxy с TLS без ручной возни с certbot.
+# Использование: caddy run --config deploy/Caddyfile
+# (или скопируйте это в /etc/caddy/Caddyfile и укажите свой домен)
+
+your-domain.example {
+	reverse_proxy localhost:3000
+
+	# SSE/поллинг-эндпоинты оверлея не должны буфферизоваться прокси.
+	@overlay path /api/public/*
+	handle @overlay {
+		reverse_proxy localhost:3000 {
+			flush_interval -1
+		}
+	}
+}

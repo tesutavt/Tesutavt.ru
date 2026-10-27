@@ -1,0 +1,491 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- Auth.js (NextAuth) models ---
+
+model User {
+  id            String    @id @default(cuid())
+  twitchId      String    @unique
+  login         String
+  displayName   String
+  email         String?   @unique
+  emailVerified DateTime?
+  avatarUrl     String?
+
+  accounts Account[]
+  sessions Session[]
+  widgets  Widget[]
+
+  botAccount   BotAccount?
+  botCommands  BotCommand[]
+  botTimers    BotTimer[]
+
+  yandexAccount YandexAccount?
+  musicSettings MusicSettings?
+  musicTracks   MusicTrack[]
+
+  vtsConnection VtsConnection?
+  vtsTriggers   VtsTrigger[]
+
+  viewerFields   ViewerField[]
+  viewerData     ViewerData[]
+  botSecrets     BotSecret[]
+  channelRewards ChannelReward[]
+
+  panelEditors PanelAccess[]
+  statsDaily   ChannelStatDaily[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// --- App models ---
+
+enum ElementKind {
+  preset
+  custom
+}
+
+model Widget {
+  id           String @id @default(cuid())
+  userId       String
+  name         String
+  overlayToken String @unique @default(cuid())
+
+  canvasWidth  Int @default(1920)
+  canvasHeight Int @default(1080)
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  elements WidgetElement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model WidgetElement {
+  id       String      @id @default(cuid())
+  widgetId String
+  name     String
+  kind     ElementKind @default(custom)
+  presetId String?
+
+  x      Int @default(40)
+  y      Int @default(40)
+  width  Int @default(400)
+  height Int @default(300)
+  zIndex Int @default(0)
+
+  html String @default("") @db.Text
+  css  String @default("") @db.Text
+  js   String @default("") @db.Text
+
+  fieldsSchema Json @default("[]")
+  fieldValues  Json @default("{}")
+
+  widget Widget @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([widgetId])
+}
+
+// --- Bot models ---
+
+model BotAccount {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  botTwitchId    String
+  botLogin       String
+  botDisplayName String
+  accessToken    String   @db.Text
+  refreshToken   String   @db.Text
+  expiresAt      DateTime
+  enabled        Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum CommandUserLevel {
+  everyone
+  subscriber
+  vip
+  moderator
+  broadcaster
+}
+
+enum CommandMode {
+  text
+  graph
+}
+
+model BotCommand {
+  id              String           @id @default(cuid())
+  userId          String
+  trigger         String
+  standardKey     String?
+  response        String?          @db.Text
+  mode            CommandMode      @default(text)
+  // { nodes: BpNode[], edges: BpEdge[] } - см. src/lib/blueprint/types.ts.
+  // Заполнено только когда mode = graph.
+  graph           Json?
+  userLevel       CommandUserLevel @default(everyone)
+  cooldownSeconds Int              @default(5)
+  enabled         Boolean          @default(true)
+  lastTriggeredAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, trigger])
+}
+
+model BotTimer {
+  id              String    @id @default(cuid())
+  userId          String
+  messages        String[]  @default([])
+  intervalSeconds Int       @default(600)
+  // Таймер срабатывает не только по времени, но и по количеству реальных
+  // сообщений чата с последнего срабатывания — чтобы не спамить в тихом
+  // чате. 0 = без порога, поведение как раньше (чисто по времени).
+  minMessages     Int       @default(0)
+  enabled         Boolean   @default(true)
+  lastSentAt      DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --- Music models ---
+
+// Токен Яндекс.Музыки нельзя получить обычным server-side OAuth редиректом:
+// приложение использует публичный client_id официального мобильного клиента
+// (свои OAuth-приложения для Музыки Яндекс не даёт создавать), а implicit-флоу
+// с token в URL-фрагменте редиректит на music.yandex.ru — читать этот фрагмент
+// с нашего домена нельзя (cross-origin). Поэтому пользователь один раз сам
+// логинится по прямой ссылке и вставляет access_token в настройках музыки.
+model YandexAccount {
+  id          String @id @default(cuid())
+  userId      String @unique
+  accessToken String @db.Text
+  uid         Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MusicSettings {
+  id             String @id @default(cuid())
+  userId         String @unique
+  volume         Float  @default(0.8)
+  maxQueueLength Int    @default(20)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum MusicSource {
+  yandex
+  youtube
+}
+
+enum MusicTrackStatus {
+  queued
+  playing
+  played
+}
+
+model MusicTrack {
+  id       String            @id @default(cuid())
+  userId   String
+  source   MusicSource
+  sourceId String
+
+  title      String
+  artist     String
+  cover      String?
+  durationMs Int     @default(0)
+  streamUrl  String? @db.Text
+
+  requestedBy   String
+  requestSource String @default("chat")
+
+  status         MusicTrackStatus @default(queued)
+  position       Int              @default(0)
+  currentTimeSec Float            @default(0)
+
+  startedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Плюс частичный уникальный индекс "не больше одного playing на userId"
+  // — добавлен через raw SQL в миграции (см. .../music_one_playing_per_user),
+  // Prisma DSL не умеет @@unique с условием WHERE.
+  @@index([userId, status, position])
+}
+
+// --- VTube Studio ---
+
+// VTube Studio крутит свой WebSocket-сервер (ws://localhost:PORT) на
+// компьютере СТРИМЕРА, а не где-то в облаке — сервер приложения физически
+// не может до него достучаться. Поэтому подключается либо виджет на
+// оверлее (тот же ПК, что и OBS + VTS), либо сама страница дашборда,
+// открытая на этом же ПК при настройке. authToken получает и сохраняет
+// именно виджет/браузер — после ручного разрешения в самом VTS
+// ("Allow Plugin API access" + клик "Allow" в попапе).
+model VtsConnection {
+  id        String  @id @default(cuid())
+  userId    String  @unique
+  port      Int     @default(8001)
+  authToken String? @db.Text
+  // Кэш списка хоткеев, который прислал tools/vts-relay.js (или браузер)
+  // после последнего успешного подключения к VTS — чтобы настраивать
+  // триггеры в дашборде можно было и тогда, когда сам дашборд открыт по
+  // https (и поэтому не может держать живое ws:// соединение сам).
+  hotkeys   Json?
+  // Постоянный токен для страницы-моста /vts/[bridgeToken] — одна ссылка
+  // для Browser Source в OBS, не зависящая от виджетов на холсте.
+  bridgeToken  String    @unique @default(cuid())
+  // Что мост последний раз сообщил о себе — дашборд показывает статус,
+  // сам к VTS не подключаясь (иначе браузер спрашивает разрешение на
+  // доступ к локальной сети).
+  bridgeStatus String?
+  lastSeenAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Именованные ярлыки на хоткеи VTS ("!vts wave" -> hotkeyId). Список
+// хоткеев для выбора получает браузер (см. VtsConnection) — сервер их не
+// хранит, только то, что стример сам замапил на имя.
+model VtsTrigger {
+  id          String @id @default(cuid())
+  userId      String
+  name        String
+  hotkeyId    String
+  hotkeyLabel String @default("")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, name])
+}
+
+// --- Обмен виджетами по ссылке ---
+
+// Снэпшот виджета на момент "Поделиться" — намеренно НЕ живая ссылка на
+// оригинал: правки в оригинале не должны неожиданно менять то, что уже
+// показано получателю на экране подтверждения, и ссылка продолжает
+// работать, даже если исходный виджет потом удалят.
+model WidgetShare {
+  id           String @id @default(cuid())
+  token        String @unique @default(cuid())
+  name         String
+  canvasWidth  Int
+  canvasHeight Int
+  elements     Json
+
+  sourceUserId String
+
+  createdAt DateTime @default(now())
+}
+
+// --- Данные зрителей (мини-БД из чата: !set city Москва) ---
+
+enum ViewerFieldType {
+  text
+  number
+  date
+}
+
+// Какие поля зрители могут заполнять командой !set. key — латиницей
+// (используется в {viewer.key}), aliases — другие имена для !set
+// (например "город" для city).
+model ViewerField {
+  id        String          @id @default(cuid())
+  userId    String
+  key       String
+  label     String
+  type      ViewerFieldType @default(text)
+  aliases   String[]        @default([])
+  maxLength Int             @default(100)
+  enabled   Boolean         @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, key])
+}
+
+// Значение поля конкретного зрителя на канале стримера userId.
+model ViewerData {
+  id             String @id @default(cuid())
+  userId         String
+  viewerTwitchId String
+  viewerLogin    String
+  viewerName     String
+  key            String
+  value          String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, viewerTwitchId, key])
+  @@index([userId, viewerLogin])
+}
+
+// Секреты для HTTP-запросов в блюпринтах ({secret:NAME}) — API-ключи и
+// токены. Значение после сохранения в браузер не возвращается.
+model BotSecret {
+  id     String @id @default(cuid())
+  userId String
+  name   String
+  value  String @db.Text
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, name])
+}
+
+// --- Награды за баллы канала ---
+
+// Награда создаётся на Twitch нашим приложением (только такие Twitch даёт
+// менять и помечать выполненными). twitchRewardId пуст, пока создать не
+// удалось (например, канал не компаньон) — lastSyncError объясняет почему.
+model ChannelReward {
+  id                    String  @id @default(cuid())
+  userId                String
+  twitchRewardId        String? @unique
+  title                 String
+  cost                  Int     @default(100)
+  prompt                String  @default("")
+  backgroundColor       String  @default("#9147FF")
+  isEnabled             Boolean @default(true)
+  isUserInputRequired   Boolean @default(false)
+  skipQueue             Boolean @default(false)
+  maxPerStream          Int?
+  maxPerUserPerStream   Int?
+  globalCooldownSeconds Int?
+  // { nodes, edges } — тот же формат, что у BotCommand.graph.
+  graph                 Json?
+  lastSyncError         String?
+  lastRedeemedAt        DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// --- Редакторы панели ---
+
+// Стример (ownerId) выдаёт доступ к своей панели другому Twitch-аккаунту
+// (обычно модератору). Редактор заходит на сайт своим аккаунтом и
+// переключается на панель владельца — все правки идут в данные владельца.
+// Сопоставление по editorTwitchId: логин на Twitch можно сменить, id — нет.
+model PanelAccess {
+  id                String  @id @default(cuid())
+  ownerId           String
+  editorTwitchId    String
+  editorLogin       String
+  editorDisplayName String
+  editorAvatarUrl   String?
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([ownerId, editorTwitchId])
+  @@index([editorTwitchId])
+}
+
+// --- Статистика канала по дням (график на дашборде) ---
+
+// Снимок раз в час (см. lib/stats/collector.ts): итоговые числа на конец
+// дня и пик зрителей. История фолловеров берётся прямо из Twitch
+// (followed_at), а подписчиков и зрителей Twitch задним числом не отдаёт —
+// они копятся здесь с момента запуска сбора.
+model ChannelStatDaily {
+  id          String   @id @default(cuid())
+  userId      String
+  date        DateTime @db.Date
+  followers   Int?
+  subscribers Int?
+  peakViewers Int?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+}
