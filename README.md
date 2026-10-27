@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://tester.kappa.lol/zKGSn.png" width="300" alt="TesutaVT.ru logo"/>
+<img src="assets/logo.png" width="300" alt="TesutaVT.ru logo"/>
 
 # ✨ TesutaVT.ru
 
