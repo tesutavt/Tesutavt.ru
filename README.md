@@ -6,10 +6,11 @@
 
 **Панель для стримера: Twitch-чатбот, оверлеи для OBS, награды за баллы, музыка и VTube Studio — в одном месте.**
 
-<p>
-  <img src="https://img.shields.io/github/last-commit/tesutavt/Tesutavt.ru?style=for-the-badge&labelColor=363a4f&color=b7bdf8&label=Обновлено" alt="Last commit"/>
-  <img src="https://img.shields.io/github/repo-size/tesutavt/Tesutavt.ru?style=for-the-badge&labelColor=363a4f&color=c6a0f6&label=Размер" alt="Repo size"/>
-  <img src="https://img.shields.io/github/stars/tesutavt/Tesutavt.ru?style=for-the-badge&labelColor=363a4f&color=eed49f&label=Звёзды" alt="Stars"/>
+<<p>
+  <img src="https://img.shields.io/badge/Twitch-363a4f?style=for-the-badge&logo=twitch&logoColor=c6a0f6" alt="Twitch"/>
+  <img src="https://img.shields.io/badge/OBS-363a4f?style=for-the-badge&logo=obsstudio&logoColor=cad3f5" alt="OBS"/>
+  <img src="https://img.shields.io/badge/VTube%20Studio-363a4f?style=for-the-badge&logoColor=f5bde6" alt="VTube Studio"/>
+  <img src="https://img.shields.io/badge/Web-363a4f?style=for-the-badge&logo=googlechrome&logoColor=8aadf4" alt="Web"/>
 </p>
 
 <img src="https://img.shields.io/badge/статус-в%20разработке-f5a97f?style=flat-square&labelColor=363a4f" alt="Status"/>
