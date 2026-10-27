@@ -6,7 +6,7 @@
 
 **Панель для стримера: Twitch-чатбот, оверлеи для OBS, награды за баллы, музыка и VTube Studio — в одном месте.**
 
-<<p>
+<p>
   <img src="https://img.shields.io/badge/Twitch-363a4f?style=for-the-badge&logo=twitch&logoColor=c6a0f6" alt="Twitch"/>
   <img src="https://img.shields.io/badge/OBS-363a4f?style=for-the-badge&logo=obsstudio&logoColor=cad3f5" alt="OBS"/>
   <img src="https://img.shields.io/badge/VTube%20Studio-363a4f?style=for-the-badge&logoColor=f5bde6" alt="VTube Studio"/>
