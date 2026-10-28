@@ -44,7 +44,7 @@ function scheduleText(t: { intervalSeconds: number; minMessages: number }) {
   const min = Math.round(t.intervalSeconds / 60);
   const base = `Каждые ${min} ${plural(min, "минуту", "минуты", "минут")}`;
   return t.minMessages > 0
-    ? `${base}, если в чате написали хотя бы ${t.minMessages} ${plural(t.minMessages, "сообщение", "сообщения", "сообщений")}`
+    ? `${base}, если за это время в чате написали хотя бы ${t.minMessages} ${plural(t.minMessages, "сообщение", "сообщения", "сообщений")}`
     : base;
 }
 
@@ -287,7 +287,7 @@ export function TimersSection({ initialTimers }: { initialTimers: TimerItem[] })
 
           <Field
             label="Не отправлять в тихом чате"
-            hint="Таймер сработает, только если с прошлой отправки в чате написали хотя бы столько сообщений. 0 — строго по времени."
+            hint="Если за интервал в чате написали меньше сообщений, отправка пропускается и отсчёт начинается заново. 0 — строго по времени."
           >
             <div className="flex items-center gap-2">
               <MessageSquare size={16} className="text-muted" />

@@ -34,9 +34,9 @@ interface ActiveBot {
   /** Растёт на каждое сообщение чата (не только команды) — источник для
    *  "умного" порога срабатывания таймеров, см. runTimerTick(). */
   totalChatMessages: number;
-  /** timerId -> значение totalChatMessages на момент последнего срабатывания
-   *  этого таймера (или на момент старта бота, если ещё не срабатывал). */
-  timerMessageBaseline: Map<string, number>;
+  /** timerId -> текущее окно таймера: когда оно началось и сколько было
+   *  totalChatMessages на тот момент. Нет записи = окно с момента старта бота. */
+  timerWindows: Map<string, { startedAt: number; baseline: number }>;
 }
 
 // См. комментарий в event-bus.ts — та же причина: при hot reload в dev
@@ -92,10 +92,10 @@ function pickRandom<T>(items: T[]): T | undefined {
 
 /**
  * Раз в TIMER_TICK_MS проверяет все включённые таймеры пользователя и
- * отправляет те, что готовы. Таймер готов, когда ОБА условия выполнены:
- * - прошло достаточно времени с последней отправки (intervalSeconds);
- * - в чате написали не меньше minMessages сообщений с последней отправки
- *   этого таймера (0 = без порога, ведёт себя как раньше).
+ * отправляет те, что готовы. Каждый таймер живёт окнами по intervalSeconds:
+ * когда окно истекло, сообщение отправляется, только если за это окно в
+ * чате написали не меньше minMessages сообщений (0 = без порога). Отправили
+ * или нет — окно начинается заново, сообщения не "копятся" между окнами.
  *
  * Список таймеров читается из БД на каждом тике, поэтому правки в
  * дашборде (текст/интервал/порог/вкл-выкл) подхватываются в течение
@@ -113,11 +113,13 @@ async function runTimerTick(userId: string) {
 
   for (const timer of timers) {
     const intervalMs = Math.max(30, timer.intervalSeconds) * 1000;
-    const sinceReference = timer.lastSentAt ?? active.startedAt;
-    if (Date.now() - sinceReference.getTime() < intervalMs) continue;
+    const timerWindow = active.timerWindows.get(timer.id) ?? { startedAt: active.startedAt.getTime(), baseline: 0 };
+    if (Date.now() - timerWindow.startedAt < intervalMs) continue;
 
-    const baseline = active.timerMessageBaseline.get(timer.id) ?? 0;
-    const messagesSeen = active.totalChatMessages - baseline;
+    const messagesSeen = active.totalChatMessages - timerWindow.baseline;
+    // Новое окно начинается сразу, до await, чтобы следующий тик не
+    // посчитал это же окно ещё раз.
+    active.timerWindows.set(timer.id, { startedAt: Date.now(), baseline: active.totalChatMessages });
     if (messagesSeen < timer.minMessages) continue;
 
     const text = pickRandom(timer.messages);
@@ -126,7 +128,6 @@ async function runTimerTick(userId: string) {
     const result = await sendChatMessage(token, active.broadcasterTwitchId, active.botTwitchId, text);
     if (result.isSent) {
       await prisma.botTimer.update({ where: { id: timer.id }, data: { lastSentAt: new Date() } });
-      active.timerMessageBaseline.set(timer.id, active.totalChatMessages);
     }
   }
 }
@@ -197,7 +198,7 @@ export async function startBotForUser(userId: string) {
     timerTick,
     startedAt: new Date(),
     totalChatMessages: 0,
-    timerMessageBaseline: new Map(),
+    timerWindows: new Map(),
   };
   activeRef.current = active;
   activeBots.set(userId, active);
